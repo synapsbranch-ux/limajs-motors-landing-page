@@ -3,8 +3,8 @@ import React from 'react';
 import Carousel from '../ui/Carousel';
 
 // Assets
-import CitadelleImage from '../../assets/images/hero/citadelle.jpg';
-import PalaisImage from '../../assets/images/hero/palais-sanssouci.jpeg';
+import CitadelleImage from '../../assets/images/hero/citadelle.webp';
+import PalaisImage from '../../assets/images/hero/palais-sanssouci.webp';
 import PlaceArmesImage from '../../assets/images/hero/place-armes.webp';
 import CapPanoramaImage from '../../assets/images/hero/cap-haitien.webp';
 
@@ -21,7 +21,7 @@ const Hero = () => {
     <section className="relative min-h-screen">
       {/* Carousel en arrière-plan */}
       <div className="absolute inset-0 z-0">
-        <Carousel 
+        <Carousel
           images={heroImages}
           autoPlayInterval={6000}
           className="w-full h-full"
