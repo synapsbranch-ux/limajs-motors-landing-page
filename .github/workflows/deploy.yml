@@ -48,9 +48,10 @@ jobs:
           cdk deploy --require-approval never --outputs-file outputs.json
           
           # Extract Outputs to Env Vars
-          API_URL=$(cat outputs.json | jq -r 'to_entries[] | select(.key | endswith("ApiGatewayURL")).value')
-          BUCKET_NAME=$(cat outputs.json | jq -r 'to_entries[] | select(.key | endswith("S3BucketName")).value')
-          DIST_ID=$(cat outputs.json | jq -r 'to_entries[] | select(.key | endswith("DistributionId")).value')
+          # Note: outputs.json structure is { "StackName": { "OutputKey": "Value" } }
+          API_URL=$(cat outputs.json | jq -r '.LimajsMotorsStack.ApiGatewayURL')
+          BUCKET_NAME=$(cat outputs.json | jq -r '.LimajsMotorsStack.S3BucketName')
+          DIST_ID=$(cat outputs.json | jq -r '.LimajsMotorsStack.DistributionId')
           
           echo "VITE_API_URL=${API_URL}" >> $GITHUB_ENV
           echo "S3_BUCKET_NAME=${BUCKET_NAME}" >> $GITHUB_ENV
