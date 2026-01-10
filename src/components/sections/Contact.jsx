@@ -3,10 +3,6 @@ import { motion } from 'framer-motion';
 import PropTypes from 'prop-types';
 import { MapPin, Phone, Mail, Send, Check } from 'lucide-react';
 
-// --- AMPLIFY GEN 2 INTEGRATION ---
-// import { generateClient } from 'aws-amplify/data';
-// Note: On n'initialise plus le client ici pour éviter l'erreur de configuration "hoisting"
-
 // Composants
 import Section from '../ui/Section';
 import Button from '../ui/Button';
@@ -66,9 +62,6 @@ ContactInfo.propTypes = {
 };
 
 const Contact = () => {
-  // Initialisation du client API à l'intérieur du composant pour garantir qu'Amplify est configuré
-  // const client = generateClient();
-
   // État du formulaire
   const [formData, setFormData] = useState({
     name: '',
@@ -148,26 +141,33 @@ const Contact = () => {
     setSubmitError(null);
 
     try {
-      // TODO: IMPLEMENT NEW BACKEND SUBMISSION HERE
-      // The previous Amplify Gen 2 implementation has been removed.
+      const apiUrl = import.meta.env.VITE_API_URL;
 
-      console.log("Form submitted locally:", formData);
+      // Fallback local pour éviter que le site ne crash si l'ENV n'est pas défini
+      if (!apiUrl) {
+        console.warn("VITE_API_URL n'est pas défini dans le fichier .env");
+        console.log("Payload:", formData);
+        // Simulation pour le dev local sans backend
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        setIsSubmitted(true);
+        setFormData({ name: '', email: '', phone: '', message: '' });
+        setIsSubmitting(false);
+        return;
+      }
 
-      // Simulate network delay for now
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      /*
-      // --- OLD AMPLIFY CALL (REMOVED) ---
-      const { data, errors } = await client.mutations.envoyerContact({
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        message: formData.message
+      const response = await fetch(`${apiUrl}/contact`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
       });
 
-      if (errors) ...
-      if (data && !data.success) ...
-      */
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Erreur lors de l'envoi du message");
+      }
 
       // Succès
       setIsSubmitted(true);

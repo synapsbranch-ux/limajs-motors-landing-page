@@ -1,0 +1,11 @@
+{
+    "name": "contact-form-handler",
+    "version": "1.0.0",
+    "description": "Lambda function to handle contact form submissions via Resend",
+    "main": "index.mjs",
+    "type": "module",
+    "dependencies": {
+        "@aws-sdk/client-secrets-manager": "^3.966.0",
+        "resend": "^3.2.0"
+    }
+}
