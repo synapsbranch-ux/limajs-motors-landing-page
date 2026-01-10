@@ -1,0 +1,341 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Variables CSS personnalisées */
+:root {
+  --primary-color: #FF6B00;
+  --secondary-color: #4169E1;
+  --accent-color: #FFD700;
+  --text-primary: #333333;
+  --text-secondary: #666666;
+  --text-tertiary: #999999;
+  --background-light: #FFFFFF;
+  --background-default: #F5F5F5;
+  --background-dark: #333333;
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-springy: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Styles de base */
+@layer base {
+  html {
+    @apply scroll-smooth;
+    font-family: "Inter", system-ui, sans-serif;
+  }
+
+  body {
+    @apply bg-background text-text-primary antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading font-bold;
+  }
+
+  /* Assurez-vous que les liens sont accessibles */
+  a:focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2;
+  }
+
+  /* Amélioration du focus pour tous les éléments interactifs */
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2;
+  }
+}
+
+/* Classes de composants réutilisables */
+@layer components {
+  /* Boutons */
+  .btn {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold 
+           transition-all duration-300 ease-in-out transform hover:scale-105 focus:outline-none 
+           focus:ring-2 focus:ring-offset-2;
+  }
+
+  .btn-primary {
+    @apply bg-primary text-white hover:bg-primary-dark 
+           focus:ring-primary shadow-button hover:shadow-lg;
+  }
+
+  .btn-secondary {
+    @apply bg-secondary text-white hover:bg-secondary-dark 
+           focus:ring-secondary;
+  }
+
+  .btn-outline {
+    @apply border-2 border-primary text-primary hover:bg-primary hover:text-white
+           focus:ring-primary;
+  }
+
+  .btn-ghost {
+    @apply text-primary hover:bg-primary/10
+           focus:ring-primary;
+  }
+
+  /* Tailles de boutons */
+  .btn-sm {
+    @apply px-3 py-1.5 text-sm;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-lg;
+  }
+
+  /* Navigation */
+  .nav-link {
+    @apply relative px-4 py-2 text-text-primary hover:text-primary transition-colors
+           after:content-[''] after:absolute after:bottom-0 after:left-0 after:w-0 
+           after:h-0.5 after:bg-primary after:transition-all after:duration-300
+           hover:after:w-full;
+  }
+
+  /* Liens actifs */
+  .nav-link-active {
+    @apply text-primary after:w-full;
+  }
+
+  /* Cards */
+  .card {
+    @apply bg-white rounded-xl shadow-card hover:shadow-card-hover transition-shadow duration-300
+           overflow-hidden border border-gray-100;
+  }
+
+  .card-hover {
+    @apply hover:transform hover:scale-[1.02] hover:-translate-y-1 
+           transition-all duration-300;
+  }
+
+  /* Sections */
+  .section {
+    @apply py-16 md:py-24;
+  }
+
+  .section-title {
+    @apply text-3xl md:text-4xl lg:text-5xl font-bold text-center mb-8
+           bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent;
+  }
+
+  .section-subtitle {
+    @apply text-lg md:text-xl text-text-secondary text-center mb-12 max-w-3xl mx-auto;
+  }
+
+  /* Container personnalisé */
+  .container-custom {
+    @apply container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl;
+  }
+
+  /* Formulaires */
+  .input-field {
+    @apply w-full px-4 py-3 rounded-lg border border-gray-300 
+         focus:ring-2 focus:ring-primary focus:border-transparent
+         transition-all duration-300;
+  }
+
+  /* Labels de formulaire */
+  .form-label {
+    @apply block mb-2 text-sm font-medium text-gray-700;
+  }
+}
+
+/* Utilitaires personnalisés */
+@layer utilities {
+  /* Animation de fondu */
+  .fade-in {
+    animation: fadeIn 0.5s ease-in forwards;
+  }
+
+  /* Animation de slide */
+  .slide-up {
+    animation: slideUp 0.6s ease-out forwards;
+  }
+
+  /* Effet de verre (Glassmorphism) */
+  .glass {
+    @apply bg-white/80 backdrop-blur-md border border-white/20;
+  }
+
+  /* Ombre portée douce */
+  .shadow-soft {
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.05);
+  }
+
+  /* Grille responsive automatique */
+  .grid-auto-fit {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6;
+  }
+
+  /* Texte gradient */
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent;
+  }
+
+  /* Overflow avec fade */
+  .overflow-fade-right {
+    mask-image: linear-gradient(to right, black 85%, transparent 100%);
+  }
+}
+
+/* Keyframes pour les animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Styles pour le scroll */
+::-webkit-scrollbar {
+  @apply w-2;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-primary/50 rounded-full hover:bg-primary transition-colors;
+}
+
+/* Media Queries pour la responsivité */
+@media (max-width: 640px) {
+  .container-custom {
+    @apply px-4;
+  }
+}
+
+/* Styles pour le mode sombre */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background-dark: #121212;
+    --text-primary: #F5F5F5;
+    --text-secondary: #CCCCCC;
+  }
+
+  .dark .card {
+    @apply bg-gray-800 border-gray-700;
+  }
+
+  .dark .glass {
+    @apply bg-gray-900/80;
+  }
+
+  .dark .input-field {
+    @apply bg-gray-800 border-gray-700 text-white;
+  }
+}
+
+/* Animations pour les cartes de service */
+.service-card {
+  @apply relative overflow-hidden;
+}
+
+.service-card::before {
+  content: '';
+  @apply absolute inset-0 bg-gradient-to-r from-primary/20 to-secondary/20 
+         opacity-0 transition-opacity duration-300;
+}
+
+.service-card:hover::before {
+  @apply opacity-100;
+}
+
+/* Animation pour le loader */
+.loader {
+  @apply relative w-12 h-12;
+}
+
+.loader::before,
+.loader::after {
+  content: '';
+  @apply absolute inset-0 border-4 border-transparent rounded-full
+         animate-spin;
+}
+
+.loader::before {
+  @apply border-t-primary border-b-primary animate-[spin_1s_linear_infinite];
+}
+
+.loader::after {
+  @apply border-l-secondary border-r-secondary animate-[spin_0.8s_linear_infinite];
+}
+
+/* Styles pour le menu mobile */
+.mobile-menu {
+  @apply fixed inset-0 bg-black/50 backdrop-blur-sm z-50
+         transform transition-transform duration-300;
+}
+
+.mobile-menu.hidden {
+  @apply translate-x-full;
+}
+
+/* Styles pour le hero section */
+.hero-gradient {
+  background: linear-gradient(135deg, 
+    rgba(255,107,0,0.1) 0%,
+    rgba(65,105,225,0.1) 100%
+  );
+}
+
+/* Effets de survol pour les icônes */
+.icon-hover {
+  @apply transition-transform duration-300 hover:scale-110 
+         hover:rotate-6 cursor-pointer;
+}
+
+/* Animation de défilement infini pour les logos partenaires */
+.infinite-scroll {
+  animation: scroll 20s linear infinite;
+}
+
+@keyframes scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+
+/* Support pour les polices web */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/Inter-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/Inter-Medium.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/Inter-SemiBold.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/Inter-Bold.woff2') format('woff2');
+}

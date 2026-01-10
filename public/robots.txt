@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+# Interdire l'accès à l'administration
+Disallow: /admin/
+Disallow: /wp-admin/
+Disallow: /login/
+
+# Sitemap
+Sitemap: https://www.limajsmotors.com/sitemap.xml
