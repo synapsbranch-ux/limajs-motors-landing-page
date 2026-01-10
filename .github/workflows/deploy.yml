@@ -32,8 +32,8 @@ jobs:
       - name: Install CDK & Backend Deps
         run: |
           npm install -g aws-cdk
-          cd infra && npm ci
-          cd ../backend/lambda/contact-form && npm ci
+          cd infra && npm install
+          cd ../backend/lambda/contact-form && npm install
 
 
       - name: Deploy Infrastructure (CDK)
