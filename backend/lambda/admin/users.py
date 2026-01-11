@@ -5,7 +5,7 @@ import boto3
 from datetime import datetime
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
-from shared.response import success, error
+from shared.response import success, error, get_http_method, get_path_parameters
 from shared.db import query_items, scan_items, convert_floats
 from boto3.dynamodb.conditions import Key, Attr
 
@@ -29,9 +29,11 @@ def lambda_handler(event, context):
     - PUT /admin/users/{userId}/activate -> Réactiver un utilisateur
     - GET /admin/users/{userId}/activity -> Activité d'un utilisateur
     """
-    http_method = event.get('httpMethod')
-    path = event.get('path', '')
-    path_parameters = event.get('pathParameters') or {}
+    - GET /admin/users/{userId}/activity -> Activité d'un utilisateur
+    """
+    http_method = get_http_method(event)
+    path = event.get('rawPath') or event.get('path', '')
+    path_parameters = get_path_parameters(event)
     
     try:
         if '/suspend' in path and http_method == 'PUT':

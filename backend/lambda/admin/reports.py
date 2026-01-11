@@ -24,18 +24,21 @@ def lambda_handler(event, context):
     - GET /admin/reports/subscriptions -> Stats abonnements
     - GET /admin/reports/trips -> Stats voyages
     """
-    path = event.get('path', '')
-    query_params = event.get('queryStringParameters') or {}
+    - GET /admin/reports/subscriptions -> Stats abonnements
+    - GET /admin/reports/trips -> Stats voyages
+    """
+    path = event.get('rawPath') or event.get('path', '')
+    query_parameters = event.get('queryStringParameters') or {}
     
     try:
-        if '/dashboard' in path:
-            return get_dashboard_kpis()
-        elif '/revenue' in path:
-            return get_revenue_report(query_params)
-        elif '/subscriptions' in path:
-            return get_subscriptions_report(query_params)
-        elif '/trips' in path:
-            return get_trips_report(query_params)
+    if '/dashboard' in path:
+        return get_dashboard_kpis()
+    elif '/revenue' in path:
+        return get_revenue_report(query_parameters)
+    elif '/subscriptions' in path:
+        return get_subscriptions_report(query_parameters)
+    elif '/trips' in path:
+        return get_trips_report(query_parameters)
         else:
             return error(400, "Invalid request")
     except Exception as e:

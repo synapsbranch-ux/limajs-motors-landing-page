@@ -8,12 +8,12 @@ from datetime import datetime
 import sys
 sys.path.insert(0, '/var/task')
 from shared.db import get_table
-from shared.response import success, error
+from shared.response import success, error, get_user_sub
 
 
 def get_payment_history(event, context):
     """GET /payments/history - Historique des paiements du passager"""
-    user_id = event.get('requestContext', {}).get('authorizer', {}).get('claims', {}).get('sub')
+    user_id = get_user_sub(event)
     
     if not user_id:
         return error(401, 'Unauthorized')

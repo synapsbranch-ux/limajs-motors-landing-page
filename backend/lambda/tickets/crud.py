@@ -8,7 +8,7 @@ import base64
 from datetime import datetime, timedelta
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
-from shared.response import success, error
+from shared.response import success, error, get_http_method, get_path_parameters, get_user_sub
 from shared.db import put_item, get_item, query_items, convert_floats
 from boto3.dynamodb.conditions import Key, Attr
 
@@ -23,8 +23,9 @@ def lambda_handler(event, context):
     - POST /tickets/validate -> Valider un QR code (chauffeur)
     - GET /tickets/history -> Historique de mes tickets
     """
-    http_method = event.get('httpMethod')
-    path = event.get('path', '')
+    http_method = get_http_method(event)
+    path_parameters = get_path_parameters(event)
+    path = event.get('rawPath') or event.get('path', '')
     
     try:
         if '/generate' in path and http_method == 'POST':
@@ -44,8 +45,7 @@ def generate_ticket(event):
     body = json.loads(event.get('body', '{}'))
     
     # Récupérer userId
-    claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
-    user_sub = claims.get('sub')
+    user_sub = get_user_sub(event)
     
     if not user_sub:
         return error(401, "Unauthorized")
@@ -114,8 +114,7 @@ def validate_ticket(event):
         return error(400, "ticketId is required")
     
     # Récupérer driver ID
-    claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
-    driver_sub = claims.get('sub')
+    driver_sub = get_user_sub(event)
     
     if not driver_sub:
         return error(401, "Unauthorized")
@@ -156,8 +155,7 @@ def validate_ticket(event):
 
 def get_ticket_history(event):
     """Historique des tickets d'un utilisateur."""
-    claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
-    user_sub = claims.get('sub')
+    user_sub = get_user_sub(event)
     
     if not user_sub:
         return error(401, "Unauthorized")
