@@ -248,6 +248,17 @@ export class LimajsMotorsStack extends cdk.Stack {
             'subscriptionReminder': createLambda('FnSubscriptionReminder', 'lambda/subscriptions/reminder.handler', {}, 60),
         };
 
+        // Grant Admin permissions to Admin Users Lambda
+        lambdas.adminUsers.addToRolePolicy(new iam.PolicyStatement({
+            actions: [
+                'cognito-idp:ListUsers',
+                'cognito-idp:AdminGetUser',
+                'cognito-idp:AdminDisableUser',
+                'cognito-idp:AdminEnableUser'
+            ],
+            resources: [`arn:aws:cognito-idp:us-east-1:513729761883:userpool/${cognitoUserPoolId}`]
+        }));
+
         // --- 5. EventBridge Rule for Daily Subscription Reminders ---
         const reminderRule = new events.Rule(this, 'SubscriptionReminderRule', {
             schedule: events.Schedule.cron({ minute: '0', hour: '13' }), // 8h Haiti = 13h UTC
