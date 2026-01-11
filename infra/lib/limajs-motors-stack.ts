@@ -54,13 +54,14 @@ export class LimajsMotorsStack extends cdk.Stack {
         const tableConnections = process.env.TABLE_CONNECTIONS || 'limajs-websocket-connections';
 
         // --- 1. S3 Frontend ---
-        // Use existing bucket name to prevent recreation on deploy
-        const frontendBucketName = bucketName || 'limajsmotorsstack-limajsmotorsfrontendbucketdd54cd-ksskae8irblk';
+        // NOTE: Do NOT change removalPolicy or autoDeleteObjects on existing bucket
+        // CloudFormation will try to replace the bucket which causes deployment failure
         const websiteBucket = new s3.Bucket(this, 'LimajsMotorsFrontendBucket', {
-            bucketName: frontendBucketName,
+            // bucketName is intentionally omitted to use CDK-generated name
+            // This maintains consistency with the existing deployed bucket
             blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-            removalPolicy: cdk.RemovalPolicy.RETAIN, // RETAIN to prevent accidental deletion
-            autoDeleteObjects: false, // Disabled for production safety
+            removalPolicy: cdk.RemovalPolicy.DESTROY,
+            autoDeleteObjects: true,
             cors: [{ allowedMethods: [s3.HttpMethods.GET], allowedOrigins: ['*'], allowedHeaders: ['*'] }]
         });
 
