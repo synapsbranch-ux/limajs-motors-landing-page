@@ -17,7 +17,7 @@ TABLE_TRIPS = os.environ.get('TABLE_TRIPS', 'limajs-trips')
 
 # Cognito client
 cognito = boto3.client('cognito-idp')
-USER_POOL_ID = os.environ.get('VITE_COGNITO_USER_POOL_ID')
+USER_POOL_ID = os.environ.get('COGNITO_USER_POOL_ID')
 
 def lambda_handler(event, context):
     """
