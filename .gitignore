@@ -59,6 +59,10 @@ env/
 
 # Backend installed packages (CI will install these)
 backend/lambda/tickets/PIL/
+backend/scripts/devinfo.md
+backend/scripts/seed_database.py
+backend/scripts/setup_cognito_users.py
+backend/scripts/get_dev_info.py
 backend/lambda/tickets/qrcode/
 backend/lambda/tickets/colorama/
 backend/lambda/tickets/bin/

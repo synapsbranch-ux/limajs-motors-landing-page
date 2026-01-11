@@ -9,6 +9,8 @@ import * as apigwv2_integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as path from 'path';
 
 export class LimajsMotorsStack extends cdk.Stack {
@@ -30,9 +32,25 @@ export class LimajsMotorsStack extends cdk.Stack {
             cors: [{ allowedMethods: [s3.HttpMethods.GET], allowedOrigins: ['*'], allowedHeaders: ['*'] }]
         });
 
+        // --- S3 Bucket for Invoices ---
+        const invoicesBucket = new s3.Bucket(this, 'LimajsInvoicesBucket', {
+            bucketName: 'limajs-invoices',
+            blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+            removalPolicy: cdk.RemovalPolicy.RETAIN,
+            cors: [{ allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT], allowedOrigins: ['*'], allowedHeaders: ['*'] }]
+        });
+
+        // Create Origin Access Identity (OAI) for CloudFront
+        const originAccessIdentity = new cloudfront.OriginAccessIdentity(this, 'OAI');
+
+        // Grant read permissions for this bucket to the OAI
+        websiteBucket.grantRead(originAccessIdentity);
+
         const distribution = new cloudfront.Distribution(this, 'LimajsMotorsDistribution', {
             defaultBehavior: {
-                origin: new origins.S3Origin(websiteBucket),
+                origin: new origins.S3Origin(websiteBucket, {
+                    originAccessIdentity: originAccessIdentity
+                }),
                 viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 compress: true,
                 cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
@@ -53,12 +71,13 @@ export class LimajsMotorsStack extends cdk.Stack {
         });
 
         // --- 3. Existing Resources (DynamoDB Tables) ---
-        // Creating references to existing tables
         const tableNames = [
             'limajs-users', 'limajs-buses', 'limajs-routes', 'limajs-schedules',
             'limajs-subscriptions', 'limajs-payments', 'limajs-tickets',
             'limajs-nfc-cards', 'limajs-trips', 'limajs-gps-positions',
-            'limajs-websocket-connections', 'limajs-notifications'
+            'limajs-websocket-connections', 'limajs-notifications',
+            // New tables for wallet/invoices
+            'limajs-invoices', 'limajs-wallet-transactions', 'limajs-passenger-trips'
         ];
 
         const tables: { [key: string]: dynamodb.ITable } = {};
@@ -67,31 +86,31 @@ export class LimajsMotorsStack extends cdk.Stack {
         }
 
         // --- 4. Python Backend Lambdas ---
-        // Path to built backend (deps installed)
-        // In CI/CD, we will set BACKEND_CODE_PATH env var. locally defaults to ../backend_dist or ../backend
         const backendCodePath = process.env.BACKEND_CODE_PATH || path.join(__dirname, '../../backend');
 
-        const createLambda = (id: string, handler: string, env: { [key: string]: string } = {}) => {
+        const createLambda = (id: string, handler: string, env: { [key: string]: string } = {}, timeout: number = 15) => {
             const fn = new lambda.Function(this, id, {
                 runtime: lambda.Runtime.PYTHON_3_12,
                 handler: handler,
                 code: lambda.Code.fromAsset(backendCodePath),
-                timeout: cdk.Duration.seconds(15),
+                timeout: cdk.Duration.seconds(timeout),
                 environment: {
                     SECRET_NAME: apiSecrets.secretName,
+                    INVOICE_BUCKET: invoicesBucket.bucketName,
+                    FROM_EMAIL: fromEmail,
+                    RESEND_API_KEY: resendApiKey,
                     AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1',
                     ...env
                 },
                 memorySize: 256
             });
 
-            // Grant access to Secrets and Tables
             apiSecrets.grantRead(fn);
             for (const table of Object.values(tables)) {
                 table.grantReadWriteData(fn);
             }
+            invoicesBucket.grantReadWrite(fn);
 
-            // Grant permissions for Location Service, S3, Cognito (Broad permissions for MVP)
             fn.addToRolePolicy(new iam.PolicyStatement({
                 actions: [
                     'geo:*',
@@ -138,9 +157,21 @@ export class LimajsMotorsStack extends cdk.Stack {
             'wsBroadcast': createLambda('FnWsBroadcast', 'lambda/websocket/broadcast.lambda_handler'),
             'gpsIngest': createLambda('FnGpsIngest', 'lambda/gps/ingest.lambda_handler'),
             'contactForm': contactLambda,
+            // --- NEW: Wallet, History, Invoices ---
+            'walletCrud': createLambda('FnWalletCrud', 'lambda/wallet/crud.handler'),
+            'tripsHistory': createLambda('FnTripsHistory', 'lambda/trips/history.handler'),
+            'paymentsHistory': createLambda('FnPaymentsHistory', 'lambda/payments/history.handler'),
+            'subscriptionReminder': createLambda('FnSubscriptionReminder', 'lambda/subscriptions/reminder.handler', {}, 60),
         };
 
-        // --- 5. API Gateway (HTTP API) ---
+        // --- 5. EventBridge Rule for Daily Subscription Reminders ---
+        const reminderRule = new events.Rule(this, 'SubscriptionReminderRule', {
+            schedule: events.Schedule.cron({ minute: '0', hour: '13' }), // 8h Haiti = 13h UTC
+            description: 'Trigger subscription reminder emails daily at 8am Haiti time',
+        });
+        reminderRule.addTarget(new targets.LambdaFunction(lambdas.subscriptionReminder));
+
+        // --- 6. API Gateway (HTTP API) ---
         const httpApi = new apigwv2.HttpApi(this, 'LimajsMotorsApi', {
             corsPreflight: {
                 allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date', 'X-Api-Key'],
@@ -149,7 +180,6 @@ export class LimajsMotorsStack extends cdk.Stack {
             },
         });
 
-        // Helper to add route
         const addRoute = (path: string, method: apigwv2.HttpMethod, fn: lambda.Function) => {
             httpApi.addRoutes({
                 path,
@@ -158,7 +188,6 @@ export class LimajsMotorsStack extends cdk.Stack {
             });
         };
 
-        // Define Routes (Simplified mapping)
         // Auth
         addRoute('/auth/signup', apigwv2.HttpMethod.POST, lambdas.signup);
         addRoute('/auth/login', apigwv2.HttpMethod.POST, lambdas.login);
@@ -182,6 +211,8 @@ export class LimajsMotorsStack extends cdk.Stack {
         addRoute('/trips/board', apigwv2.HttpMethod.POST, lambdas.tripsCrud);
         addRoute('/trips/alight', apigwv2.HttpMethod.POST, lambdas.tripsCrud);
         addRoute('/trips/current/passengers', apigwv2.HttpMethod.GET, lambdas.tripsCrud);
+        // NEW: Trip history for passengers
+        addRoute('/trips/history', apigwv2.HttpMethod.GET, lambdas.tripsHistory);
 
         // GPS (Driver App)
         addRoute('/gps/batch', apigwv2.HttpMethod.POST, lambdas.gpsIngest);
@@ -192,20 +223,40 @@ export class LimajsMotorsStack extends cdk.Stack {
         addRoute('/subscriptions/active', apigwv2.HttpMethod.GET, lambdas.subscriptionsCrud);
         addRoute('/payments/presigned-url', apigwv2.HttpMethod.POST, lambdas.paymentsCrud);
         addRoute('/payments/upload', apigwv2.HttpMethod.POST, lambdas.paymentsCrud);
+        // NEW: Payment history
+        addRoute('/payments/history', apigwv2.HttpMethod.GET, lambdas.paymentsHistory);
+
+        // NEW: Wallet endpoints
+        addRoute('/wallet/balance', apigwv2.HttpMethod.GET, lambdas.walletCrud);
+        addRoute('/wallet/transactions', apigwv2.HttpMethod.GET, lambdas.walletCrud);
+        addRoute('/wallet/recharge', apigwv2.HttpMethod.POST, lambdas.walletCrud);
+        addRoute('/wallet/pay', apigwv2.HttpMethod.POST, lambdas.walletCrud);
+
+        // Tickets
+        addRoute('/tickets/generate', apigwv2.HttpMethod.POST, lambdas.ticketsCrud);
+        addRoute('/tickets/my', apigwv2.HttpMethod.GET, lambdas.ticketsCrud);
+        addRoute('/tickets/validate', apigwv2.HttpMethod.POST, lambdas.ticketsCrud);
+        addRoute('/tickets/{id}', apigwv2.HttpMethod.GET, lambdas.ticketsCrud);
+
+        // NFC
+        addRoute('/nfc/my-card', apigwv2.HttpMethod.GET, lambdas.nfcCrud);
+        addRoute('/nfc/validate', apigwv2.HttpMethod.POST, lambdas.nfcCrud);
+        addRoute('/nfc/recharge', apigwv2.HttpMethod.POST, lambdas.nfcCrud);
 
         // Admin
         addRoute('/admin/users', apigwv2.HttpMethod.GET, lambdas.adminUsers);
         addRoute('/admin/reports/dashboard', apigwv2.HttpMethod.GET, lambdas.adminReports);
 
-        // Contact Form (existing)
+        // Contact Form
         addRoute('/contact', apigwv2.HttpMethod.POST, lambdas.contactForm);
 
-        // --- 6. Outputs ---
+        // --- 7. Outputs ---
         new cdk.CfnOutput(this, 'CloudFrontURL', { value: `https://${distribution.distributionDomainName}` });
         new cdk.CfnOutput(this, 'ApiGatewayURL', { value: httpApi.url! });
         new cdk.CfnOutput(this, 'S3BucketName', { value: websiteBucket.bucketName });
         new cdk.CfnOutput(this, 'DistributionId', { value: distribution.distributionId });
         new cdk.CfnOutput(this, 'SecretName', { value: apiSecrets.secretName });
+        new cdk.CfnOutput(this, 'InvoicesBucketName', { value: invoicesBucket.bucketName });
     }
 }
 
