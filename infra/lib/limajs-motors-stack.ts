@@ -7,34 +7,29 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigwv2_integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as path from 'path';
 
 export class LimajsMotorsStack extends cdk.Stack {
     constructor(scope: Construct, id: string, props?: cdk.StackProps) {
         super(scope, id, props);
 
-        // --- Configuration from Environment (GitHub Secrets) ---
-        const resendApiKey = process.env.RESEND_API_KEY || 'placeholder_key';
+        // --- Configuration (from GitHub Secrets via env vars) ---
+        const resendApiKey = process.env.RESEND_API_KEY || '';
         const adminEmails = process.env.ADMIN_EMAILS || 'limajsmotorssa@gmail.com,mainoffice@limajs.com';
         const fromEmail = process.env.FROM_EMAIL || 'contact@limajs.com';
-        const bucketName = process.env.TARGET_BUCKET_NAME; // Optional, creates random if undefined
+        const bucketName = process.env.TARGET_BUCKET_NAME;
 
-        // 1. S3 Bucket for Frontend Hosting
+        // --- 1. S3 Frontend ---
         const websiteBucket = new s3.Bucket(this, 'LimajsMotorsFrontendBucket', {
-            bucketName: bucketName, // If Env var is set, use it. Else auto-generate.
+            bucketName: bucketName,
             blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
             removalPolicy: cdk.RemovalPolicy.DESTROY,
             autoDeleteObjects: true,
-            cors: [
-                {
-                    allowedMethods: [s3.HttpMethods.GET],
-                    allowedOrigins: ['*'],
-                    allowedHeaders: ['*'],
-                }
-            ]
+            cors: [{ allowedMethods: [s3.HttpMethods.GET], allowedOrigins: ['*'], allowedHeaders: ['*'] }]
         });
 
-        // 2. CloudFront Distribution
         const distribution = new cloudfront.Distribution(this, 'LimajsMotorsDistribution', {
             defaultBehavior: {
                 origin: new origins.S3Origin(websiteBucket),
@@ -43,17 +38,10 @@ export class LimajsMotorsStack extends cdk.Stack {
                 cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
             },
             defaultRootObject: 'index.html',
-            errorResponses: [
-                {
-                    httpStatus: 404,
-                    responseHttpStatus: 200,
-                    responsePagePath: '/index.html',
-                },
-            ],
+            errorResponses: [{ httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' }],
         });
 
-        // 3. Secrets Manager for Backend
-        // Injects the GitHub Secret (RESEND_API_KEY) into the AWS Secret
+        // --- 2. Secrets Manager ---
         const apiSecrets = new secretsmanager.Secret(this, 'LimajsbackendSecrets', {
             secretName: 'limajs/backend/production',
             description: 'Configuration for Limajs Backend',
@@ -64,61 +52,161 @@ export class LimajsMotorsStack extends cdk.Stack {
             })),
         });
 
-        // 4. Lambda Function (Backend)
+        // --- 3. Existing Resources (DynamoDB Tables) ---
+        // Creating references to existing tables
+        const tableNames = [
+            'limajs-users', 'limajs-buses', 'limajs-routes', 'limajs-schedules',
+            'limajs-subscriptions', 'limajs-payments', 'limajs-tickets',
+            'limajs-nfc-cards', 'limajs-trips', 'limajs-gps-positions',
+            'limajs-websocket-connections', 'limajs-notifications'
+        ];
+
+        const tables: { [key: string]: dynamodb.ITable } = {};
+        for (const tableName of tableNames) {
+            tables[tableName] = dynamodb.Table.fromTableName(this, `Table_${tableName}`, tableName);
+        }
+
+        // --- 4. Python Backend Lambdas ---
+        // Path to built backend (deps installed)
+        // In CI/CD, we will set BACKEND_CODE_PATH env var. locally defaults to ../backend_dist or ../backend
+        const backendCodePath = process.env.BACKEND_CODE_PATH || path.join(__dirname, '../../backend');
+
+        const createLambda = (id: string, handler: string, env: { [key: string]: string } = {}) => {
+            const fn = new lambda.Function(this, id, {
+                runtime: lambda.Runtime.PYTHON_3_12,
+                handler: handler,
+                code: lambda.Code.fromAsset(backendCodePath),
+                timeout: cdk.Duration.seconds(15),
+                environment: {
+                    SECRET_NAME: apiSecrets.secretName,
+                    AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1',
+                    ...env
+                },
+                memorySize: 256
+            });
+
+            // Grant access to Secrets and Tables
+            apiSecrets.grantRead(fn);
+            for (const table of Object.values(tables)) {
+                table.grantReadWriteData(fn);
+            }
+
+            // Grant permissions for Location Service, S3, Cognito (Broad permissions for MVP)
+            fn.addToRolePolicy(new iam.PolicyStatement({
+                actions: [
+                    'geo:*',
+                    's3:*',
+                    'cognito-idp:*',
+                    'execute-api:ManageConnections',
+                    'secretsmanager:GetSecretValue'
+                ],
+                resources: ['*']
+            }));
+
+            return fn;
+        };
+
+        // --- Contact Form Lambda (Node.js - existing) ---
         const contactLambda = new lambda.Function(this, 'ContactFormHandler', {
-            runtime: lambda.Runtime.NODEJS_22_X, // Latest LTS
+            runtime: lambda.Runtime.NODEJS_22_X,
             handler: 'index.handler',
             code: lambda.Code.fromAsset(path.join(__dirname, '../../backend/lambda/contact-form')),
-            environment: {
-                // Pass the Secret Name so the code knows where to fetch it
-                SECRET_NAME: apiSecrets.secretName,
-            },
+            environment: { SECRET_NAME: apiSecrets.secretName },
             timeout: cdk.Duration.seconds(10),
         });
-
-        // Grant permission to read the secret
         apiSecrets.grantRead(contactLambda);
 
-        // 5. API Gateway (HTTP API)
+        // --- Python Backend Lambdas ---
+        const lambdas = {
+            'signup': createLambda('FnSignup', 'lambda/auth/signup.lambda_handler'),
+            'login': createLambda('FnLogin', 'lambda/auth/login.lambda_handler'),
+            'getProfile': createLambda('FnGetProfile', 'lambda/users/get_profile.lambda_handler'),
+            'updateProfile': createLambda('FnUpdateProfile', 'lambda/users/update_profile.lambda_handler'),
+            'busesCrud': createLambda('FnBusesCrud', 'lambda/buses/crud.lambda_handler'),
+            'routesCrud': createLambda('FnRoutesCrud', 'lambda/routes/crud.lambda_handler'),
+            'schedulesCrud': createLambda('FnSchedulesCrud', 'lambda/schedules/crud.lambda_handler'),
+            'tripsCrud': createLambda('FnTripsCrud', 'lambda/trips/crud.lambda_handler'),
+            'paymentsCrud': createLambda('FnPaymentsCrud', 'lambda/payments/crud.lambda_handler'),
+            'subscriptionsCrud': createLambda('FnSubscriptionsCrud', 'lambda/subscriptions/crud.lambda_handler'),
+            'ticketsCrud': createLambda('FnTicketsCrud', 'lambda/tickets/crud.lambda_handler'),
+            'nfcCrud': createLambda('FnNfcCrud', 'lambda/nfc/crud.lambda_handler'),
+            'adminUsers': createLambda('FnAdminUsers', 'lambda/admin/users.lambda_handler'),
+            'adminReports': createLambda('FnAdminReports', 'lambda/admin/reports.lambda_handler'),
+            'wsConnect': createLambda('FnWsConnect', 'lambda/websocket/connect.lambda_handler'),
+            'wsDisconnect': createLambda('FnWsDisconnect', 'lambda/websocket/disconnect.lambda_handler'),
+            'wsSubscribe': createLambda('FnWsSubscribe', 'lambda/websocket/subscribe.lambda_handler'),
+            'wsBroadcast': createLambda('FnWsBroadcast', 'lambda/websocket/broadcast.lambda_handler'),
+            'gpsIngest': createLambda('FnGpsIngest', 'lambda/gps/ingest.lambda_handler'),
+            'contactForm': contactLambda,
+        };
+
+        // --- 5. API Gateway (HTTP API) ---
+        // This replaces the manual setup.
         const httpApi = new apigwv2.HttpApi(this, 'LimajsMotorsApi', {
             corsPreflight: {
-                allowHeaders: ['Content-Type', 'Authorization'],
-                allowMethods: [
-                    apigwv2.CorsHttpMethod.POST,
-                    apigwv2.CorsHttpMethod.OPTIONS,
-                ],
+                allowHeaders: ['Content-Type', 'Authorization', 'x-amz-date', 'authorization', 'x-api-key'],
+                allowMethods: [apigwv2.CorsHttpMethod.ANY],
                 allowOrigins: ['*'],
             },
         });
 
-        httpApi.addRoutes({
-            path: '/contact',
-            methods: [apigwv2.HttpMethod.POST],
-            integration: new apigwv2_integrations.HttpLambdaIntegration(
-                'ContactIntegration',
-                contactLambda
-            ),
-        });
+        // Helper to add route
+        const addRoute = (path: string, method: apigwv2.HttpMethod, fn: lambda.Function) => {
+            httpApi.addRoutes({
+                path,
+                methods: [method],
+                integration: new apigwv2_integrations.HttpLambdaIntegration(`${id}_${path.replace(/\//g, '')}_${method}`, fn)
+            });
+        };
 
-        // 6. Outputs 
-        new cdk.CfnOutput(this, 'CloudFrontURL', {
-            value: `https://${distribution.distributionDomainName}`,
-            description: 'The URL of the frontend application',
-        });
+        // Define Routes (Simplified mapping)
+        // Auth
+        addRoute('/auth/signup', apigwv2.HttpMethod.POST, lambdas.signup);
+        addRoute('/auth/login', apigwv2.HttpMethod.POST, lambdas.login);
 
-        new cdk.CfnOutput(this, 'ApiGatewayURL', {
-            value: httpApi.url!,
-            description: 'The URL of the API Gateway',
-        });
+        // Users
+        addRoute('/users/me', apigwv2.HttpMethod.GET, lambdas.getProfile);
+        addRoute('/users/me', apigwv2.HttpMethod.PUT, lambdas.updateProfile);
+        addRoute('/users/me/photo', apigwv2.HttpMethod.POST, lambdas.updateProfile);
 
-        new cdk.CfnOutput(this, 'DistributionId', {
-            value: distribution.distributionId,
-            description: 'CloudFront Distribution ID',
-        });
+        // Core Business
+        addRoute('/buses', apigwv2.HttpMethod.ANY, lambdas.busesCrud);
+        addRoute('/buses/{id}', apigwv2.HttpMethod.ANY, lambdas.busesCrud);
+        addRoute('/routes', apigwv2.HttpMethod.ANY, lambdas.routesCrud);
+        addRoute('/routes/{id}', apigwv2.HttpMethod.ANY, lambdas.routesCrud);
+        addRoute('/schedules', apigwv2.HttpMethod.ANY, lambdas.schedulesCrud);
+        addRoute('/schedules/{id}', apigwv2.HttpMethod.ANY, lambdas.schedulesCrud);
 
-        new cdk.CfnOutput(this, 'S3BucketName', {
-            value: websiteBucket.bucketName,
-            description: 'The name of the S3 bucket',
-        });
+        // Trips (Driver App)
+        addRoute('/trips/start', apigwv2.HttpMethod.POST, lambdas.tripsCrud);
+        addRoute('/trips/end', apigwv2.HttpMethod.POST, lambdas.tripsCrud);
+        addRoute('/trips/board', apigwv2.HttpMethod.POST, lambdas.tripsCrud);
+        addRoute('/trips/alight', apigwv2.HttpMethod.POST, lambdas.tripsCrud);
+        addRoute('/trips/current/passengers', apigwv2.HttpMethod.GET, lambdas.tripsCrud);
+
+        // GPS (Driver App)
+        addRoute('/gps/batch', apigwv2.HttpMethod.POST, lambdas.gpsIngest);
+
+        // Subscriptions & Payments
+        addRoute('/subscriptions/types', apigwv2.HttpMethod.GET, lambdas.subscriptionsCrud);
+        addRoute('/subscriptions', apigwv2.HttpMethod.POST, lambdas.subscriptionsCrud);
+        addRoute('/subscriptions/active', apigwv2.HttpMethod.GET, lambdas.subscriptionsCrud);
+        addRoute('/payments/presigned-url', apigwv2.HttpMethod.POST, lambdas.paymentsCrud);
+        addRoute('/payments/upload', apigwv2.HttpMethod.POST, lambdas.paymentsCrud);
+
+        // Admin
+        addRoute('/admin/users', apigwv2.HttpMethod.GET, lambdas.adminUsers);
+        addRoute('/admin/reports/dashboard', apigwv2.HttpMethod.GET, lambdas.adminReports);
+
+        // Contact Form (existing)
+        addRoute('/contact', apigwv2.HttpMethod.POST, lambdas.contactForm);
+
+        // --- 6. Outputs ---
+        new cdk.CfnOutput(this, 'CloudFrontURL', { value: `https://${distribution.distributionDomainName}` });
+        new cdk.CfnOutput(this, 'ApiGatewayURL', { value: httpApi.url! });
+        new cdk.CfnOutput(this, 'S3BucketName', { value: websiteBucket.bucketName });
+        new cdk.CfnOutput(this, 'DistributionId', { value: distribution.distributionId });
+        new cdk.CfnOutput(this, 'SecretName', { value: apiSecrets.secretName });
     }
 }
+

@@ -1,0 +1,68 @@
+name: Deploy Frontend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'vite.config.ts'
+      - '.env*'
+      - 'package.json'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Get Infra Outputs
+        id: infra
+        run: |
+          # Fetch S3 Bucket Name and API URL from existing CloudFormation stack
+          STACK_NAME="LimajsMotorsStack"
+          
+          outputs=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs")
+          
+          API_URL=$(echo $outputs | jq -r '.[] | select(.OutputKey=="ApiGatewayURL") | .OutputValue')
+          BUCKET_NAME=$(echo $outputs | jq -r '.[] | select(.OutputKey=="S3BucketName") | .OutputValue')
+          DIST_ID=$(echo $outputs | jq -r '.[] | select(.OutputKey=="DistributionId") | .OutputValue')
+          
+          echo "API_URL=$API_URL" >> $GITHUB_ENV
+          echo "S3_BUCKET_NAME=$BUCKET_NAME" >> $GITHUB_ENV
+          echo "CLOUDFRONT_DIST_ID=$DIST_ID" >> $GITHUB_ENV
+          
+          # Inject as VITE_API_URL
+          echo "VITE_API_URL=$API_URL" >> $GITHUB_ENV
+
+      - name: Build Frontend
+        run: |
+          npm install --force
+          npm run build
+
+      - name: Sync to S3
+        run: |
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET_NAME }} --delete
+
+      - name: Invalidate CloudFront Cache
+        run: |
+          aws cloudfront create-invalidation --distribution-id ${{ env.CLOUDFRONT_DIST_ID }} --paths "/*"
