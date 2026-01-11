@@ -31,14 +31,14 @@ def lambda_handler(event, context):
     query_parameters = event.get('queryStringParameters') or {}
     
     try:
-    if '/dashboard' in path:
-        return get_dashboard_kpis()
-    elif '/revenue' in path:
-        return get_revenue_report(query_parameters)
-    elif '/subscriptions' in path:
-        return get_subscriptions_report(query_parameters)
-    elif '/trips' in path:
-        return get_trips_report(query_parameters)
+        if '/dashboard' in path:
+            return get_dashboard_kpis()
+        elif '/revenue' in path:
+            return get_revenue_report(query_parameters)
+        elif '/subscriptions' in path:
+            return get_subscriptions_report(query_parameters)
+        elif '/trips' in path:
+            return get_trips_report(query_parameters)
         else:
             return error(400, "Invalid request")
     except Exception as e:

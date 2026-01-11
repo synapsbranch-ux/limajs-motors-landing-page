@@ -32,10 +32,10 @@ def lambda_handler(event, context):
             return generate_ticket(event)
         elif '/validate' in path and http_method == 'POST':
             return validate_ticket(event)
-        elif '/history' in path and http_method == 'GET':
+        elif ('/history' in path or '/my' in path) and http_method == 'GET':
             return get_ticket_history(event)
         else:
-            return error(400, "Invalid request")
+            return error(400, f"Invalid request: {http_method} {path}")
     except Exception as e:
         print(f"Error: {e}")
         return error(500, str(e))

@@ -5,7 +5,7 @@ import boto3
 from datetime import datetime
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
-from shared.response import success, error
+from shared.response import success, error, get_http_method, get_user_sub
 from shared.db import get_item, update_item, convert_floats
 
 TABLE_USERS = os.environ.get('TABLE_USERS', 'limajs-users')
@@ -20,8 +20,10 @@ def lambda_handler(event, context):
     - PUT /users/me -> Modifier mon profil
     - POST /users/me/photo -> Upload photo de profil (presigned URL)
     """
-    http_method = event.get('httpMethod')
-    path = event.get('path', '')
+    - POST /users/me/photo -> Upload photo de profil (presigned URL)
+    """
+    http_method = get_http_method(event)
+    path = event.get('rawPath') or event.get('path', '')
     
     try:
         if '/photo' in path and http_method == 'POST':
@@ -37,8 +39,7 @@ def lambda_handler(event, context):
 def update_profile(event):
     """Mettre à jour les informations de profil."""
     # Récupérer userId depuis JWT
-    claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
-    user_sub = claims.get('sub')
+    user_sub = get_user_sub(event)
     
     if not user_sub:
         return error(401, "Unauthorized")
@@ -83,8 +84,7 @@ def update_profile(event):
 
 def get_photo_upload_url(event):
     """Générer une URL pré-signée pour upload photo de profil."""
-    claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
-    user_sub = claims.get('sub')
+    user_sub = get_user_sub(event)
     
     if not user_sub:
         return error(401, "Unauthorized")

@@ -124,10 +124,11 @@ def get_active_subscription(event):
     user_id = f"USER#{user_sub}"
     
     # Query avec GSI user-status-index
+    # Query avec GSI user-status-index
     subscriptions = query_items(
         TABLE_SUBSCRIPTIONS,
-        Key('userId').eq(user_id),
-        Attr('status').eq('ACTIVE') & Attr('endDate').gte(datetime.utcnow().isoformat()),
+        Key('userId').eq(user_id) & Key('status').eq('ACTIVE'),
+        Attr('endDate').gte(datetime.utcnow().isoformat()),
         index_name='user-status-index'
     )
     

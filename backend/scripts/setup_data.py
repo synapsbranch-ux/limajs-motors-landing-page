@@ -10,6 +10,7 @@ dynamodb = boto3.client('dynamodb', region_name='us-east-1')
 
 TABLE_SUBSCRIPTIONS = 'limajs-subscriptions'
 TABLE_USERS = 'limajs-users'
+TABLE_TICKETS = 'limajs-tickets'
 
 def create_gsi():
     print(f"Checking GSI 'user-status-index' on {TABLE_SUBSCRIPTIONS}...")
@@ -46,10 +47,46 @@ def create_gsi():
                 }
             ]
         )
-        print("GSI creation initiated. This may take a few minutes.")
+        print("GSI creation initiated for subscriptions. This may take a few minutes.")
         
     except Exception as e:
-        print(f"Error creating GSI: {e}")
+        print(f"Error creating GSI for subscriptions: {e}")
+
+def create_tickets_gsi():
+    print(f"Checking GSI 'user-tickets-index' on {TABLE_TICKETS}...")
+    try:
+        response = dynamodb.describe_table(TableName=TABLE_TICKETS)
+        gsis = response['Table'].get('GlobalSecondaryIndexes', [])
+        gsi_names = [g['IndexName'] for g in gsis]
+        
+        if 'user-tickets-index' in gsi_names:
+            print("GSI 'user-tickets-index' already exists.")
+            return
+
+        print("Creating GSI 'user-tickets-index'...")
+        dynamodb.update_table(
+            TableName=TABLE_TICKETS,
+            AttributeDefinitions=[
+                {'AttributeName': 'userId', 'AttributeType': 'S'},
+                {'AttributeName': 'createdAt', 'AttributeType': 'S'}
+            ],
+            GlobalSecondaryIndexUpdates=[
+                {
+                    'Create': {
+                        'IndexName': 'user-tickets-index',
+                        'KeySchema': [
+                            {'AttributeName': 'userId', 'KeyType': 'HASH'},
+                            {'AttributeName': 'createdAt', 'KeyType': 'RANGE'}
+                        ],
+                        'Projection': {'ProjectionType': 'ALL'}
+                    }
+                }
+            ]
+        )
+        print("GSI creation initiated for tickets.")
+        
+    except Exception as e:
+        print(f"Error creating GSI for tickets: {e}")
 
 def create_user_profiles():
     print(f"\nCreating/Updating user profiles in {TABLE_USERS}...")
@@ -105,11 +142,23 @@ def create_user_profiles():
                     'updatedAt': {'S': time.strftime('%Y-%m-%dT%H:%M:%SZ')}
                 }
                 
-                dynamodb.put_item(
-                    TableName=TABLE_USERS,
-                    Item=item
-                )
-                print(f"Created profile for {user_data['email']} ({user_id})")
+                # Verify existing first to not overwrite balances if re-running
+                try:
+                    dynamodb.put_item(
+                        TableName=TABLE_USERS,
+                        Item=item,
+                        ConditionExpression='attribute_not_exists(userId)'
+                    )
+                    print(f"Created profile for {user_data['email']} ({user_id})")
+                except dynamodb.exceptions.ConditionalCheckFailedException:
+                    print(f"Profile for {user_data['email']} already exists. Updating role only.")
+                    dynamodb.update_item(
+                        TableName=TABLE_USERS,
+                        Key={'userId': {'S': user_id}, 'type': {'S': 'PROFILE'}},
+                        UpdateExpression='SET #role = :role',
+                        ExpressionAttributeNames={'#role': 'role'},
+                        ExpressionAttributeValues={':role': {'S': user_data['role']}}
+                    )
                 
             except cognito.exceptions.UserNotFoundException:
                 print(f"User {user_data['email']} not found in Cognito. Skipping.")
@@ -121,4 +170,5 @@ def create_user_profiles():
 
 if __name__ == "__main__":
     create_gsi()
+    create_tickets_gsi()
     create_user_profiles()

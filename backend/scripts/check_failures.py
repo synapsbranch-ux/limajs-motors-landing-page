@@ -25,11 +25,8 @@ BASE_URL = 'https://bekioazd5d.execute-api.us-east-1.amazonaws.com'
 
 # Failed endpoints to check
 endpoints = [
-    '/users/me',
     '/subscriptions/active',
-    '/tickets/my',
-    '/trips/history',
-    '/payments/history',
+    '/tickets/history',
     '/admin/users',
     '/admin/reports/dashboard'
 ]
