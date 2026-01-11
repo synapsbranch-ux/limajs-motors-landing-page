@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timedelta
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
-from shared.response import success, error
+from shared.response import success, error, get_http_method, get_path_parameters, get_user_claims, get_user_sub
 from shared.db import put_item, get_item, query_items, scan_items, convert_floats
 from boto3.dynamodb.conditions import Key, Attr
 
@@ -20,9 +20,9 @@ def lambda_handler(event, context):
     - GET /subscriptions/active -> Mon abonnement actif
     - GET /subscriptions/{userId} -> Abonnements d'un user (admin)
     """
-    http_method = event.get('httpMethod')
-    path = event.get('path', '')
-    path_parameters = event.get('pathParameters') or {}
+    http_method = get_http_method(event)
+    path = event.get('rawPath') or event.get('path', '')
+    path_parameters = get_path_parameters(event)
     
     try:
         if '/types' in path and http_method == 'GET':
@@ -71,9 +71,8 @@ def create_subscription(event):
     """Créer une demande d'abonnement."""
     body = json.loads(event.get('body', '{}'))
     
-    # Récupérer userId depuis JWT (authorizer)
-    claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
-    user_sub = claims.get('sub')
+    # Get user from JWT claims (supports both REST and HTTP API)
+    user_sub = get_user_sub(event)
     
     if not user_sub:
         return error(401, "Unauthorized")
@@ -117,8 +116,7 @@ def create_subscription(event):
 
 def get_active_subscription(event):
     """Récupérer l'abonnement actif de l'utilisateur connecté."""
-    claims = event.get('requestContext', {}).get('authorizer', {}).get('claims', {})
-    user_sub = claims.get('sub')
+    user_sub = get_user_sub(event)
     
     if not user_sub:
         return error(401, "Unauthorized")

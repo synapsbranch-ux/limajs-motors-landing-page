@@ -14,12 +14,12 @@ import boto3
 import sys
 sys.path.insert(0, '/var/task')
 from shared.db import get_table
-from shared.response import success, error
+from shared.response import success, error, get_user_sub
 
 
 def get_balance(event, context):
     """GET /wallet/balance - Retourne le solde du wallet"""
-    user_id = event.get('requestContext', {}).get('authorizer', {}).get('claims', {}).get('sub')
+    user_id = get_user_sub(event)
     
     if not user_id:
         return error(401, 'Unauthorized')
@@ -37,7 +37,7 @@ def get_balance(event, context):
 
 def get_transactions(event, context):
     """GET /wallet/transactions - Historique des transactions"""
-    user_id = event.get('requestContext', {}).get('authorizer', {}).get('claims', {}).get('sub')
+    user_id = get_user_sub(event)
     
     if not user_id:
         return error(401, 'Unauthorized')
@@ -70,7 +70,7 @@ def get_transactions(event, context):
 
 def request_recharge(event, context):
     """POST /wallet/recharge - Demande de recharge (avec preuve de paiement)"""
-    user_id = event.get('requestContext', {}).get('authorizer', {}).get('claims', {}).get('sub')
+    user_id = get_user_sub(event)
     
     if not user_id:
         return error(401, 'Unauthorized')
@@ -125,7 +125,7 @@ def request_recharge(event, context):
 
 def pay_with_wallet(event, context):
     """POST /wallet/pay - Payer avec le solde du wallet"""
-    user_id = event.get('requestContext', {}).get('authorizer', {}).get('claims', {}).get('sub')
+    user_id = get_user_sub(event)
     
     if not user_id:
         return error(401, 'Unauthorized')

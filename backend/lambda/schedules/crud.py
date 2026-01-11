@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
-from shared.response import success, error
+from shared.response import success, error, get_http_method, get_path_parameters
 from shared.db import put_item, get_item, query_items, scan_items, delete_item, convert_floats
 from boto3.dynamodb.conditions import Key, Attr
 
@@ -21,10 +21,10 @@ def lambda_handler(event, context):
     - PUT /schedules/{scheduleId} -> Modifier un horaire
     - DELETE /schedules/{scheduleId} -> Supprimer un horaire
     """
-    http_method = event.get('httpMethod')
-    path_parameters = event.get('pathParameters') or {}
+    http_method = get_http_method(event)
+    path_parameters = get_path_parameters(event)
     query_parameters = event.get('queryStringParameters') or {}
-    schedule_id = path_parameters.get('scheduleId')
+    schedule_id = path_parameters.get('scheduleId') or path_parameters.get('id')
     
     try:
         if http_method == 'POST':
