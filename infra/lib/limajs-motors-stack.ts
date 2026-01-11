@@ -141,10 +141,9 @@ export class LimajsMotorsStack extends cdk.Stack {
         };
 
         // --- 5. API Gateway (HTTP API) ---
-        // This replaces the manual setup.
         const httpApi = new apigwv2.HttpApi(this, 'LimajsMotorsApi', {
             corsPreflight: {
-                allowHeaders: ['Content-Type', 'Authorization', 'x-amz-date', 'authorization', 'x-api-key'],
+                allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date', 'X-Api-Key'],
                 allowMethods: [apigwv2.CorsHttpMethod.ANY],
                 allowOrigins: ['*'],
             },

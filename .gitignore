@@ -40,7 +40,7 @@ develop-eggs/
 downloads/
 eggs/
 .eggs/
-lib/
+# lib/  # Commented - blocks infra/lib/
 lib64/
 parts/
 sdist/

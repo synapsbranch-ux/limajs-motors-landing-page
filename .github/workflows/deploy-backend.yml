@@ -65,3 +65,46 @@ jobs:
         run: |
           cdk deploy --require-approval never --outputs-file outputs.json
           cat outputs.json
+
+      - name: Extract Outputs
+        id: outputs
+        working-directory: ./infra
+        run: |
+          API_URL=$(cat outputs.json | jq -r '.LimajsMotorsStack.ApiGatewayURL')
+          CLOUDFRONT_URL=$(cat outputs.json | jq -r '.LimajsMotorsStack.CloudFrontURL')
+          S3_BUCKET=$(cat outputs.json | jq -r '.LimajsMotorsStack.S3BucketName')
+          DIST_ID=$(cat outputs.json | jq -r '.LimajsMotorsStack.DistributionId')
+          SECRET_NAME=$(cat outputs.json | jq -r '.LimajsMotorsStack.SecretName')
+          
+          echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
+          echo "CLOUDFRONT_URL=$CLOUDFRONT_URL" >> $GITHUB_OUTPUT
+          echo "S3_BUCKET=$S3_BUCKET" >> $GITHUB_OUTPUT
+          echo "DIST_ID=$DIST_ID" >> $GITHUB_OUTPUT
+          echo "SECRET_NAME=$SECRET_NAME" >> $GITHUB_OUTPUT
+
+      - name: 📧 Send Deployment Email
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          DEV_MAIL: ${{ secrets.DEV_MAIL }}
+          API_URL: ${{ steps.outputs.outputs.API_URL }}
+          CLOUDFRONT_URL: ${{ steps.outputs.outputs.CLOUDFRONT_URL }}
+          S3_BUCKET: ${{ steps.outputs.outputs.S3_BUCKET }}
+          DIST_ID: ${{ steps.outputs.outputs.DIST_ID }}
+          SECRET_NAME: ${{ steps.outputs.outputs.SECRET_NAME }}
+        run: |
+          DEPLOY_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          COMMIT_SHA="${{ github.sha }}"
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          BRANCH="${{ github.ref_name }}"
+          
+          curl -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer $RESEND_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d @- << EOF
+          {
+            "from": "LimaJS Deploy Bot <deploy@limajs.com>",
+            "to": ["$DEV_MAIL"],
+            "subject": "🚀 LimaJS Backend Deployed Successfully!",
+            "html": "<!DOCTYPE html><html><head><style>body{font-family:Arial,sans-serif;background:#f4f4f4;padding:20px}h1{color:#2563eb}h2{color:#1e40af;border-bottom:2px solid #3b82f6;padding-bottom:5px}code{background:#e5e7eb;padding:2px 8px;border-radius:4px;font-size:14px}table{width:100%;border-collapse:collapse;margin:15px 0}td{padding:10px;border:1px solid #d1d5db}td:first-child{background:#f3f4f6;font-weight:bold;width:30%}.success{background:#10b981;color:white;padding:5px 15px;border-radius:20px;display:inline-block}</style></head><body><h1>🚀 LimaJS Motors - Déploiement Réussi!</h1><p><span class='success'>✅ SUCCESS</span> Déployé le $DEPLOY_TIME</p><h2>📡 Endpoints API</h2><table><tr><td>API Gateway URL</td><td><code>$API_URL</code></td></tr><tr><td>CloudFront URL</td><td><code>$CLOUDFRONT_URL</code></td></tr><tr><td>S3 Bucket</td><td><code>$S3_BUCKET</code></td></tr><tr><td>CloudFront Dist ID</td><td><code>$DIST_ID</code></td></tr><tr><td>Secret Name</td><td><code>$SECRET_NAME</code></td></tr></table><h2>🔗 Routes Backend Disponibles</h2><table><tr><td>Auth</td><td><code>POST /auth/signup</code>, <code>POST /auth/login</code></td></tr><tr><td>Users</td><td><code>GET /users/me</code>, <code>PUT /users/me</code></td></tr><tr><td>Buses</td><td><code>ANY /buses</code>, <code>ANY /buses/{id}</code></td></tr><tr><td>Routes</td><td><code>ANY /routes</code>, <code>ANY /routes/{id}</code></td></tr><tr><td>Schedules</td><td><code>ANY /schedules</code></td></tr><tr><td>Trips</td><td><code>POST /trips/start</code>, <code>/end</code>, <code>/board</code>, <code>/alight</code></td></tr><tr><td>GPS</td><td><code>POST /gps/batch</code></td></tr><tr><td>Subscriptions</td><td><code>GET /subscriptions/types</code>, <code>POST /subscriptions</code></td></tr><tr><td>Payments</td><td><code>POST /payments/presigned-url</code></td></tr><tr><td>Admin</td><td><code>GET /admin/users</code>, <code>GET /admin/reports/dashboard</code></td></tr><tr><td>Contact</td><td><code>POST /contact</code></td></tr></table><h2>📋 Git Info</h2><table><tr><td>Commit</td><td><code>${COMMIT_SHA:0:7}</code></td></tr><tr><td>Branch</td><td><code>$BRANCH</code></td></tr><tr><td>Message</td><td>$COMMIT_MSG</td></tr></table><h2>🔧 Pour tester</h2><pre style='background:#1f2937;color:#f9fafb;padding:15px;border-radius:8px;overflow-x:auto'>curl ${API_URL}buses</pre><p style='color:#6b7280;font-size:12px;margin-top:30px'>Email envoyé automatiquement par GitHub Actions</p></body></html>"
+          }
+          EOF
