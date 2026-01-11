@@ -18,17 +18,49 @@ export class LimajsMotorsStack extends cdk.Stack {
         super(scope, id, props);
 
         // --- Configuration (from GitHub Secrets via env vars) ---
+        // Email configuration
         const resendApiKey = process.env.RESEND_API_KEY || '';
         const adminEmails = process.env.ADMIN_EMAILS || 'limajsmotorssa@gmail.com,mainoffice@limajs.com';
         const fromEmail = process.env.FROM_EMAIL || 'contact@limajs.com';
+        const devMail = process.env.DEV_MAIL || '';
+
+        // S3 Configuration
         const bucketName = process.env.TARGET_BUCKET_NAME;
+        const storageBucket = process.env.AWS_S3_BUCKET_NAME || 'limajs-storage-513729761883';
+
+        // Cognito Configuration
+        const cognitoUserPoolId = process.env.VITE_COGNITO_USER_POOL_ID || 'us-east-1_78ANoaZy1';
+        const cognitoClientId = process.env.VITE_COGNITO_CLIENT_ID || '6vilq0et60jovueorl2p0o6gcp';
+
+        // WebSocket Configuration
+        const websocketUrl = process.env.VITE_WEBSOCKET_URL || 'wss://hvt51zyjsc.execute-api.us-east-1.amazonaws.com/production';
+        const websocketApiId = process.env.WEBSOCKET_API_ID || 'hvt51zyjsc';
+
+        // AWS Location Configuration
+        const locationMapName = process.env.AWS_LOCATION_MAP_NAME || 'limajs-map-standard';
+        const locationTrackerName = process.env.AWS_LOCATION_TRACKER_NAME || 'limajs-bus-tracker';
+
+        // DynamoDB Table Names
+        const tableUsers = process.env.TABLE_USERS || 'limajs-users';
+        const tableBuses = process.env.TABLE_BUSES || 'limajs-buses';
+        const tableRoutes = process.env.TABLE_ROUTES || 'limajs-routes';
+        const tableSchedules = process.env.TABLE_SCHEDULES || 'limajs-schedules';
+        const tableSubscriptions = process.env.TABLE_SUBSCRIPTIONS || 'limajs-subscriptions';
+        const tablePayments = process.env.TABLE_PAYMENTS || 'limajs-payments';
+        const tableTickets = process.env.TABLE_TICKETS || 'limajs-tickets';
+        const tableNfcCards = process.env.TABLE_NFC_CARDS || 'limajs-nfc-cards';
+        const tableTrips = process.env.TABLE_TRIPS || 'limajs-trips';
+        const tableGpsPositions = process.env.TABLE_GPS_POSITIONS || 'limajs-gps-positions';
+        const tableConnections = process.env.TABLE_CONNECTIONS || 'limajs-websocket-connections';
 
         // --- 1. S3 Frontend ---
+        // Use existing bucket name to prevent recreation on deploy
+        const frontendBucketName = bucketName || 'limajsmotorsstack-limajsmotorsfrontendbucketdd54cd-ksskae8irblk';
         const websiteBucket = new s3.Bucket(this, 'LimajsMotorsFrontendBucket', {
-            bucketName: bucketName,
+            bucketName: frontendBucketName,
             blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-            removalPolicy: cdk.RemovalPolicy.DESTROY,
-            autoDeleteObjects: true,
+            removalPolicy: cdk.RemovalPolicy.RETAIN, // RETAIN to prevent accidental deletion
+            autoDeleteObjects: false, // Disabled for production safety
             cors: [{ allowedMethods: [s3.HttpMethods.GET], allowedOrigins: ['*'], allowedHeaders: ['*'] }]
         });
 
@@ -59,14 +91,39 @@ export class LimajsMotorsStack extends cdk.Stack {
             errorResponses: [{ httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' }],
         });
 
-        // --- 2. Secrets Manager ---
+        // --- 2. Secrets Manager (All configuration values) ---
         const apiSecrets = new secretsmanager.Secret(this, 'LimajsbackendSecrets', {
             secretName: 'limajs/backend/production',
             description: 'Configuration for Limajs Backend',
             secretStringValue: cdk.SecretValue.unsafePlainText(JSON.stringify({
+                // Email
                 RESEND_API_KEY: resendApiKey,
                 ADMIN_EMAILS: adminEmails,
-                FROM_EMAIL: fromEmail
+                FROM_EMAIL: fromEmail,
+                DEV_MAIL: devMail,
+                // Cognito
+                COGNITO_USER_POOL_ID: cognitoUserPoolId,
+                COGNITO_CLIENT_ID: cognitoClientId,
+                // WebSocket
+                WEBSOCKET_URL: websocketUrl,
+                WEBSOCKET_API_ID: websocketApiId,
+                // AWS Location
+                AWS_LOCATION_MAP_NAME: locationMapName,
+                AWS_LOCATION_TRACKER_NAME: locationTrackerName,
+                // S3
+                AWS_S3_BUCKET_NAME: storageBucket,
+                // DynamoDB Tables
+                TABLE_USERS: tableUsers,
+                TABLE_BUSES: tableBuses,
+                TABLE_ROUTES: tableRoutes,
+                TABLE_SCHEDULES: tableSchedules,
+                TABLE_SUBSCRIPTIONS: tableSubscriptions,
+                TABLE_PAYMENTS: tablePayments,
+                TABLE_TICKETS: tableTickets,
+                TABLE_NFC_CARDS: tableNfcCards,
+                TABLE_TRIPS: tableTrips,
+                TABLE_GPS_POSITIONS: tableGpsPositions,
+                TABLE_CONNECTIONS: tableConnections,
             })),
         });
 
@@ -99,6 +156,14 @@ export class LimajsMotorsStack extends cdk.Stack {
                     INVOICE_BUCKET: invoicesBucket.bucketName,
                     FROM_EMAIL: fromEmail,
                     RESEND_API_KEY: resendApiKey,
+                    // Cognito configuration for auth lambdas
+                    COGNITO_USER_POOL_ID: cognitoUserPoolId,
+                    COGNITO_CLIENT_ID: cognitoClientId,
+                    VITE_COGNITO_CLIENT_ID: cognitoClientId, // Alias for backwards compatibility
+                    // WebSocket configuration
+                    WEBSOCKET_API_ID: websocketApiId,
+                    // AWS Location
+                    AWS_LOCATION_TRACKER_NAME: locationTrackerName,
                     AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1',
                     ...env
                 },
@@ -113,13 +178,26 @@ export class LimajsMotorsStack extends cdk.Stack {
 
             fn.addToRolePolicy(new iam.PolicyStatement({
                 actions: [
-                    'geo:*',
-                    's3:*',
-                    'cognito-idp:*',
-                    'execute-api:ManageConnections',
-                    'secretsmanager:GetSecretValue'
+                    'geo:BatchUpdateDevicePosition',
+                    'geo:GetDevicePosition',
+                    'geo:GetDevicePositionHistory'
                 ],
-                resources: ['*']
+                resources: [`arn:aws:geo:us-east-1:513729761883:tracker/${locationTrackerName}`]
+            }));
+
+            fn.addToRolePolicy(new iam.PolicyStatement({
+                actions: [
+                    'cognito-idp:AdminGetUser',
+                    'cognito-idp:AdminCreateUser',
+                    'cognito-idp:AdminUpdateUserAttributes',
+                    'cognito-idp:InitiateAuth'
+                ],
+                resources: [`arn:aws:cognito-idp:us-east-1:513729761883:userpool/${cognitoUserPoolId}`]
+            }));
+
+            fn.addToRolePolicy(new iam.PolicyStatement({
+                actions: ['execute-api:ManageConnections'],
+                resources: [`arn:aws:execute-api:us-east-1:513729761883:${websocketApiId}/*`]
             }));
 
             return fn;

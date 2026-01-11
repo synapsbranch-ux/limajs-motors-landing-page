@@ -39,11 +39,14 @@ def query_items(table_name, key_condition, filter_expression=None, index_name=No
     response = table.query(**kwargs)
     return response.get('Items', [])
 
-def scan_items(table_name, filter_expression=None):
-    """Scan toute la table (à éviter si possible)."""
+def scan_items(table_name, filter_expression=None, limit=10):
+    """
+    Scan table with filter (use sparingly - prefer query with GSI).
+    Limited to prevent expensive full table scans.
+    """
     table = get_table(table_name)
     
-    kwargs = {}
+    kwargs = {'Limit': limit}  # Limit to prevent runaway costs
     if filter_expression:
         kwargs['FilterExpression'] = filter_expression
     

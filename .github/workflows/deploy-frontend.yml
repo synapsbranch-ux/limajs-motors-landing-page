@@ -1,6 +1,7 @@
 name: Deploy Frontend
 
 on:
+  workflow_dispatch: # Allow manual trigger for testing
   push:
     branches:
       - main
@@ -35,24 +36,16 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Get Infra Outputs
+      - name: Set Deployment Targets
         id: infra
         run: |
-          # Fetch S3 Bucket Name and API URL from existing CloudFormation stack
-          STACK_NAME="LimajsMotorsStack"
+          # Use GitHub Secrets for infrastructure targets.
+          # Required secrets: S3_BUCKET_NAME_FRONTEND, CLOUDFRONT_DIST_ID, API_URL
+          # Configure in: GitHub Repo -> Settings -> Secrets and variables -> Actions -> Secrets
           
-          outputs=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs")
-          
-          API_URL=$(echo $outputs | jq -r '.[] | select(.OutputKey=="ApiGatewayURL") | .OutputValue')
-          BUCKET_NAME=$(echo $outputs | jq -r '.[] | select(.OutputKey=="S3BucketName") | .OutputValue')
-          DIST_ID=$(echo $outputs | jq -r '.[] | select(.OutputKey=="DistributionId") | .OutputValue')
-          
-          echo "API_URL=$API_URL" >> $GITHUB_ENV
-          echo "S3_BUCKET_NAME=$BUCKET_NAME" >> $GITHUB_ENV
-          echo "CLOUDFRONT_DIST_ID=$DIST_ID" >> $GITHUB_ENV
-          
-          # Inject as VITE_API_URL
-          echo "VITE_API_URL=$API_URL" >> $GITHUB_ENV
+          echo "VITE_API_URL=${{ secrets.API_URL }}" >> $GITHUB_ENV
+          echo "S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME_FRONTEND }}" >> $GITHUB_ENV
+          echo "CLOUDFRONT_DIST_ID=${{ secrets.CLOUDFRONT_DIST_ID }}" >> $GITHUB_ENV
 
       - name: Build Frontend
         run: |

@@ -58,9 +58,35 @@ jobs:
       - name: Deploy Infrastructure (CDK)
         working-directory: ./infra
         env:
+          # Email Configuration
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
           FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+          DEV_MAIL: ${{ secrets.DEV_MAIL }}
+          # Cognito Configuration
+          VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
+          VITE_COGNITO_CLIENT_ID: ${{ secrets.VITE_COGNITO_CLIENT_ID }}
+          # WebSocket Configuration
+          VITE_WEBSOCKET_URL: ${{ secrets.VITE_WEBSOCKET_URL }}
+          WEBSOCKET_API_ID: ${{ secrets.WEBSOCKET_API_ID }}
+          # AWS Location Services
+          AWS_LOCATION_MAP_NAME: ${{ secrets.AWS_LOCATION_MAP_NAME }}
+          AWS_LOCATION_TRACKER_NAME: ${{ secrets.AWS_LOCATION_TRACKER_NAME }}
+          # S3 Configuration
+          AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
+          # DynamoDB Tables
+          TABLE_USERS: ${{ secrets.TABLE_USERS }}
+          TABLE_BUSES: ${{ secrets.TABLE_BUSES }}
+          TABLE_ROUTES: ${{ secrets.TABLE_ROUTES }}
+          TABLE_SCHEDULES: ${{ secrets.TABLE_SCHEDULES }}
+          TABLE_SUBSCRIPTIONS: ${{ secrets.TABLE_SUBSCRIPTIONS }}
+          TABLE_PAYMENTS: ${{ secrets.TABLE_PAYMENTS }}
+          TABLE_TICKETS: ${{ secrets.TABLE_TICKETS }}
+          TABLE_NFC_CARDS: ${{ secrets.TABLE_NFC_CARDS }}
+          TABLE_TRIPS: ${{ secrets.TABLE_TRIPS }}
+          TABLE_GPS_POSITIONS: ${{ secrets.TABLE_GPS_POSITIONS }}
+          TABLE_CONNECTIONS: ${{ secrets.TABLE_CONNECTIONS }}
+          # CDK Configuration
           BACKEND_CODE_PATH: ../dist_backend
         run: |
           cdk deploy --require-approval never --outputs-file outputs.json
