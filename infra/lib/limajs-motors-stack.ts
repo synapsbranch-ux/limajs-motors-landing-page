@@ -175,6 +175,10 @@ export class LimajsMotorsStack extends cdk.Stack {
             apiSecrets.grantRead(fn);
             for (const table of Object.values(tables)) {
                 table.grantReadWriteData(fn);
+                fn.addToRolePolicy(new iam.PolicyStatement({
+                    actions: ['dynamodb:Query', 'dynamodb:Scan'],
+                    resources: [`${table.tableArn}/index/*`]
+                }));
             }
             invoicesBucket.grantReadWrite(fn);
 

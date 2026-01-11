@@ -20,8 +20,6 @@ def lambda_handler(event, context):
     - PUT /users/me -> Modifier mon profil
     - POST /users/me/photo -> Upload photo de profil (presigned URL)
     """
-    - POST /users/me/photo -> Upload photo de profil (presigned URL)
-    """
     http_method = get_http_method(event)
     path = event.get('rawPath') or event.get('path', '')
     

@@ -29,7 +29,6 @@ def lambda_handler(event, context):
     - PUT /admin/users/{userId}/activate -> Réactiver un utilisateur
     - GET /admin/users/{userId}/activity -> Activité d'un utilisateur
     """
-    """
     http_method = get_http_method(event)
     path = event.get('rawPath') or event.get('path', '')
     path_parameters = get_path_parameters(event)

@@ -35,6 +35,12 @@ print("=" * 60)
 print("DETAILED ERROR RESPONSES FOR FAILED ENDPOINTS")
 print("=" * 60)
 
+# Check PUT /users/me separately
+print("\n--- PUT /users/me ---")
+resp = requests.put(f'{BASE_URL}/users/me', headers=headers, json={'name': 'Updated Name'}, timeout=30)
+print(f"Status: {resp.status_code}")
+print(f"Response: {resp.text[:300]}")
+
 for endpoint in endpoints:
     resp = requests.get(f'{BASE_URL}{endpoint}', headers=headers, timeout=30)
     print(f"\n--- {endpoint} ---")

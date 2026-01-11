@@ -24,9 +24,6 @@ def lambda_handler(event, context):
     - GET /admin/reports/subscriptions -> Stats abonnements
     - GET /admin/reports/trips -> Stats voyages
     """
-    - GET /admin/reports/subscriptions -> Stats abonnements
-    - GET /admin/reports/trips -> Stats voyages
-    """
     path = event.get('rawPath') or event.get('path', '')
     query_parameters = event.get('queryStringParameters') or {}
     
