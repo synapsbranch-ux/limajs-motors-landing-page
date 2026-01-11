@@ -6,6 +6,7 @@ import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigwv2_integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -250,7 +251,7 @@ export class LimajsMotorsStack extends cdk.Stack {
         });
         reminderRule.addTarget(new targets.LambdaFunction(lambdas.subscriptionReminder));
 
-        // --- 6. API Gateway (HTTP API) ---
+        // --- 6. API Gateway (HTTP API) with Cognito JWT Authorizer ---
         const httpApi = new apigwv2.HttpApi(this, 'LimajsMotorsApi', {
             corsPreflight: {
                 allowHeaders: ['Content-Type', 'Authorization', 'X-Amz-Date', 'X-Api-Key'],
@@ -259,7 +260,16 @@ export class LimajsMotorsStack extends cdk.Stack {
             },
         });
 
-        const addRoute = (path: string, method: apigwv2.HttpMethod, fn: lambda.Function) => {
+        // JWT Authorizer for Cognito User Pool
+        const jwtAuthorizer = new HttpJwtAuthorizer('CognitoAuthorizer',
+            `https://cognito-idp.us-east-1.amazonaws.com/${cognitoUserPoolId}`,
+            {
+                jwtAudience: [cognitoClientId],
+            }
+        );
+
+        // Public routes (no auth)
+        const addPublicRoute = (path: string, method: apigwv2.HttpMethod, fn: lambda.Function) => {
             httpApi.addRoutes({
                 path,
                 methods: [method],
@@ -267,67 +277,75 @@ export class LimajsMotorsStack extends cdk.Stack {
             });
         };
 
-        // Auth
-        addRoute('/auth/signup', apigwv2.HttpMethod.POST, lambdas.signup);
-        addRoute('/auth/login', apigwv2.HttpMethod.POST, lambdas.login);
+        // Protected routes (require JWT)
+        const addProtectedRoute = (path: string, method: apigwv2.HttpMethod, fn: lambda.Function) => {
+            httpApi.addRoutes({
+                path,
+                methods: [method],
+                integration: new apigwv2_integrations.HttpLambdaIntegration(`${id}_${path.replace(/\//g, '')}_${method}_auth`, fn),
+                authorizer: jwtAuthorizer
+            });
+        };
 
-        // Users
-        addRoute('/users/me', apigwv2.HttpMethod.GET, lambdas.getProfile);
-        addRoute('/users/me', apigwv2.HttpMethod.PUT, lambdas.updateProfile);
-        addRoute('/users/me/photo', apigwv2.HttpMethod.POST, lambdas.updateProfile);
+        // Auth (Public - no auth required)
+        addPublicRoute('/auth/signup', apigwv2.HttpMethod.POST, lambdas.signup);
+        addPublicRoute('/auth/login', apigwv2.HttpMethod.POST, lambdas.login);
 
-        // Core Business
-        addRoute('/buses', apigwv2.HttpMethod.ANY, lambdas.busesCrud);
-        addRoute('/buses/{id}', apigwv2.HttpMethod.ANY, lambdas.busesCrud);
-        addRoute('/routes', apigwv2.HttpMethod.ANY, lambdas.routesCrud);
-        addRoute('/routes/{id}', apigwv2.HttpMethod.ANY, lambdas.routesCrud);
-        addRoute('/schedules', apigwv2.HttpMethod.ANY, lambdas.schedulesCrud);
-        addRoute('/schedules/{id}', apigwv2.HttpMethod.ANY, lambdas.schedulesCrud);
+        // Users (Protected)
+        addProtectedRoute('/users/me', apigwv2.HttpMethod.GET, lambdas.getProfile);
+        addProtectedRoute('/users/me', apigwv2.HttpMethod.PUT, lambdas.updateProfile);
+        addProtectedRoute('/users/me/photo', apigwv2.HttpMethod.POST, lambdas.updateProfile);
 
-        // Trips (Driver App)
-        addRoute('/trips/start', apigwv2.HttpMethod.POST, lambdas.tripsCrud);
-        addRoute('/trips/end', apigwv2.HttpMethod.POST, lambdas.tripsCrud);
-        addRoute('/trips/board', apigwv2.HttpMethod.POST, lambdas.tripsCrud);
-        addRoute('/trips/alight', apigwv2.HttpMethod.POST, lambdas.tripsCrud);
-        addRoute('/trips/current/passengers', apigwv2.HttpMethod.GET, lambdas.tripsCrud);
-        // NEW: Trip history for passengers
-        addRoute('/trips/history', apigwv2.HttpMethod.GET, lambdas.tripsHistory);
+        // Core Business (Protected)
+        addProtectedRoute('/buses', apigwv2.HttpMethod.ANY, lambdas.busesCrud);
+        addProtectedRoute('/buses/{id}', apigwv2.HttpMethod.ANY, lambdas.busesCrud);
+        addProtectedRoute('/routes', apigwv2.HttpMethod.ANY, lambdas.routesCrud);
+        addProtectedRoute('/routes/{id}', apigwv2.HttpMethod.ANY, lambdas.routesCrud);
+        addProtectedRoute('/schedules', apigwv2.HttpMethod.ANY, lambdas.schedulesCrud);
+        addProtectedRoute('/schedules/{id}', apigwv2.HttpMethod.ANY, lambdas.schedulesCrud);
 
-        // GPS (Driver App)
-        addRoute('/gps/batch', apigwv2.HttpMethod.POST, lambdas.gpsIngest);
+        // Trips (Driver App - Protected)
+        addProtectedRoute('/trips/start', apigwv2.HttpMethod.POST, lambdas.tripsCrud);
+        addProtectedRoute('/trips/end', apigwv2.HttpMethod.POST, lambdas.tripsCrud);
+        addProtectedRoute('/trips/board', apigwv2.HttpMethod.POST, lambdas.tripsCrud);
+        addProtectedRoute('/trips/alight', apigwv2.HttpMethod.POST, lambdas.tripsCrud);
+        addProtectedRoute('/trips/current/passengers', apigwv2.HttpMethod.GET, lambdas.tripsCrud);
+        addProtectedRoute('/trips/history', apigwv2.HttpMethod.GET, lambdas.tripsHistory);
+
+        // GPS (Driver App - Protected)
+        addProtectedRoute('/gps/batch', apigwv2.HttpMethod.POST, lambdas.gpsIngest);
 
         // Subscriptions & Payments
-        addRoute('/subscriptions/types', apigwv2.HttpMethod.GET, lambdas.subscriptionsCrud);
-        addRoute('/subscriptions', apigwv2.HttpMethod.POST, lambdas.subscriptionsCrud);
-        addRoute('/subscriptions/active', apigwv2.HttpMethod.GET, lambdas.subscriptionsCrud);
-        addRoute('/payments/presigned-url', apigwv2.HttpMethod.POST, lambdas.paymentsCrud);
-        addRoute('/payments/upload', apigwv2.HttpMethod.POST, lambdas.paymentsCrud);
-        // NEW: Payment history
-        addRoute('/payments/history', apigwv2.HttpMethod.GET, lambdas.paymentsHistory);
+        addPublicRoute('/subscriptions/types', apigwv2.HttpMethod.GET, lambdas.subscriptionsCrud);  // Public: view plans
+        addProtectedRoute('/subscriptions', apigwv2.HttpMethod.POST, lambdas.subscriptionsCrud);
+        addProtectedRoute('/subscriptions/active', apigwv2.HttpMethod.GET, lambdas.subscriptionsCrud);
+        addProtectedRoute('/payments/presigned-url', apigwv2.HttpMethod.POST, lambdas.paymentsCrud);
+        addProtectedRoute('/payments/upload', apigwv2.HttpMethod.POST, lambdas.paymentsCrud);
+        addProtectedRoute('/payments/history', apigwv2.HttpMethod.GET, lambdas.paymentsHistory);
 
-        // NEW: Wallet endpoints
-        addRoute('/wallet/balance', apigwv2.HttpMethod.GET, lambdas.walletCrud);
-        addRoute('/wallet/transactions', apigwv2.HttpMethod.GET, lambdas.walletCrud);
-        addRoute('/wallet/recharge', apigwv2.HttpMethod.POST, lambdas.walletCrud);
-        addRoute('/wallet/pay', apigwv2.HttpMethod.POST, lambdas.walletCrud);
+        // Wallet (Protected)
+        addProtectedRoute('/wallet/balance', apigwv2.HttpMethod.GET, lambdas.walletCrud);
+        addProtectedRoute('/wallet/transactions', apigwv2.HttpMethod.GET, lambdas.walletCrud);
+        addProtectedRoute('/wallet/recharge', apigwv2.HttpMethod.POST, lambdas.walletCrud);
+        addProtectedRoute('/wallet/pay', apigwv2.HttpMethod.POST, lambdas.walletCrud);
 
-        // Tickets
-        addRoute('/tickets/generate', apigwv2.HttpMethod.POST, lambdas.ticketsCrud);
-        addRoute('/tickets/my', apigwv2.HttpMethod.GET, lambdas.ticketsCrud);
-        addRoute('/tickets/validate', apigwv2.HttpMethod.POST, lambdas.ticketsCrud);
-        addRoute('/tickets/{id}', apigwv2.HttpMethod.GET, lambdas.ticketsCrud);
+        // Tickets (Protected)
+        addProtectedRoute('/tickets/generate', apigwv2.HttpMethod.POST, lambdas.ticketsCrud);
+        addProtectedRoute('/tickets/my', apigwv2.HttpMethod.GET, lambdas.ticketsCrud);
+        addProtectedRoute('/tickets/validate', apigwv2.HttpMethod.POST, lambdas.ticketsCrud);
+        addProtectedRoute('/tickets/{id}', apigwv2.HttpMethod.GET, lambdas.ticketsCrud);
 
-        // NFC
-        addRoute('/nfc/my-card', apigwv2.HttpMethod.GET, lambdas.nfcCrud);
-        addRoute('/nfc/validate', apigwv2.HttpMethod.POST, lambdas.nfcCrud);
-        addRoute('/nfc/recharge', apigwv2.HttpMethod.POST, lambdas.nfcCrud);
+        // NFC (Protected)
+        addProtectedRoute('/nfc/my-card', apigwv2.HttpMethod.GET, lambdas.nfcCrud);
+        addProtectedRoute('/nfc/validate', apigwv2.HttpMethod.POST, lambdas.nfcCrud);
+        addProtectedRoute('/nfc/recharge', apigwv2.HttpMethod.POST, lambdas.nfcCrud);
 
-        // Admin
-        addRoute('/admin/users', apigwv2.HttpMethod.GET, lambdas.adminUsers);
-        addRoute('/admin/reports/dashboard', apigwv2.HttpMethod.GET, lambdas.adminReports);
+        // Admin (Protected - requires admin role)
+        addProtectedRoute('/admin/users', apigwv2.HttpMethod.GET, lambdas.adminUsers);
+        addProtectedRoute('/admin/reports/dashboard', apigwv2.HttpMethod.GET, lambdas.adminReports);
 
-        // Contact Form
-        addRoute('/contact', apigwv2.HttpMethod.POST, lambdas.contactForm);
+        // Contact Form (Public)
+        addPublicRoute('/contact', apigwv2.HttpMethod.POST, lambdas.contactForm);
 
         // --- 7. Outputs ---
         new cdk.CfnOutput(this, 'CloudFrontURL', { value: `https://${distribution.distributionDomainName}` });
